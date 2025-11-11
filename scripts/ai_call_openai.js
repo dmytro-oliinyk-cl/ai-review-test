@@ -1,116 +1,79 @@
-// scripts/ai_call_openai.js
-/* eslint-disable no-console */
-const fs = require("fs");
+/**
+ * Calls OpenAI API with the built request and processes the response
+ * Extracts structured JSON output and generates review comments
+ */
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_API_URL =
-  process.env.OPENAI_API_URL || "https://api.openai.com/v1/responses";
-const MODEL = process.env.MODEL || "gpt-5-nano";
-const RAW_DIFF_LEN = process.env.RAW_DIFF_LEN || "0";
+const config = require("./config");
+const { readJsonFile, writeJsonFile, writeFile } = require("./utils/fileUtils");
+const { callOpenAI } = require("./utils/apiClient");
+const { withErrorHandling, validateRequiredEnvVars } = require("./utils/errorHandler");
+const { extractResponseText, formatMarkdownComment } = require("./formatters/commentFormatter");
 
-if (!OPENAI_API_KEY) {
-  console.error("❌ Missing OPENAI_API_KEY");
-  process.exit(1);
-}
-
-function read(path) {
-  return fs.existsSync(path) ? fs.readFileSync(path, "utf8") : "";
-}
-
-function extractText(d) {
-  // 1) Пряме поле (інколи присутнє в Responses API)
-  if (typeof d?.output_text === "string" && d.output_text.trim()) {
-    return d.output_text;
-  }
-
-  // 2) Загальний випадок Responses API:
-  //    output[] -> type: "message" -> content[] -> type: "output_text" -> text
-  if (Array.isArray(d?.output)) {
-    const chunks = [];
-    for (const part of d.output) {
-      if (part?.type === "message" && Array.isArray(part.content)) {
-        for (const c of part.content) {
-          if (c?.type === "output_text" && typeof c.text === "string") {
-            chunks.push(c.text);
-          }
-        }
-      }
-    }
-    if (chunks.length) return chunks.join("\n");
-  }
-
-  // 3) Фолбек на Chat Completions
-  const choice = d?.choices?.[0];
-  if (choice?.message?.content && typeof choice.message.content === "string") {
-    return choice.message.content;
-  }
-
-  return "";
-}
-
+/**
+ * Main function to call OpenAI API and process response
+ */
 async function main() {
-  const body = JSON.parse(read("request.json") || "{}");
-  body.model = body.model || MODEL; // safety
+  // Validate required environment variables
+  validateRequiredEnvVars(["OPENAI_API_KEY"]);
 
-  // timeout на запит
-  const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), 60_000);
-
-  const resp = await fetch(OPENAI_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: ac.signal,
-  }).catch((e) => {
-    clearTimeout(t);
-    throw e;
-  });
-
-  clearTimeout(t);
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    console.error(`❌ OpenAI HTTP ${resp.status}: ${text}`);
-    process.exit(1);
+  // Read the request payload
+  const requestPayload = readJsonFile(config.paths.requestJson);
+  if (!requestPayload) {
+    throw new Error(`Request file not found: ${config.paths.requestJson}`);
   }
 
-  const data = await resp.json();
-  fs.writeFileSync("response.json", JSON.stringify(data, null, 2), "utf8");
+  // Ensure model is set (safety check)
+  requestPayload.model = requestPayload.model || config.openai.model;
 
-  // Витягаємо відповідь надійно
-  let text = extractText(data);
-  if (!text || typeof text !== "string") text = "{}";
+  console.log(`🚀 Calling OpenAI API (model: ${requestPayload.model})...`);
 
-  // Лог сирого тексту для дебага
-  fs.writeFileSync("ai_raw_text.txt", text, "utf8");
+  // Call OpenAI API with retry logic
+  const apiResponse = await callOpenAI(requestPayload);
 
-  // Парсимо очікуваний JSON {"issues":[...]}
-  let parsed;
+  // Save raw API response for debugging
+  writeJsonFile(config.paths.responseJson, apiResponse);
+
+  // Extract text from the response (handles multiple formats)
+  let responseText = extractResponseText(apiResponse);
+  if (!responseText || typeof responseText !== "string") {
+    responseText = "{}";
+  }
+
+  // Save raw extracted text for debugging
+  writeFile(config.paths.aiRawText, responseText);
+
+  // Parse the JSON response
+  let parsedResult;
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = {};
+    parsedResult = JSON.parse(responseText);
+  } catch (error) {
+    console.warn("⚠️  Failed to parse AI response as JSON, using empty result");
+    parsedResult = { issues: [] };
   }
 
-  fs.writeFileSync("ai_result.json", JSON.stringify(parsed, null, 2), "utf8");
+  // Save parsed result
+  writeJsonFile(config.paths.aiResultJson, parsedResult);
 
-  const md = [
-    "### 🤖 AI Code Review",
-    `_Model: \`${MODEL}\` • raw diff: ${RAW_DIFF_LEN} chars_`,
-    "",
-    "```json",
-    JSON.stringify(parsed, null, 2),
-    "```",
-  ].join("\n");
+  // Get diff length from environment
+  const rawDiffLength = process.env.RAW_DIFF_LEN || "0";
 
-  fs.writeFileSync("comment.md", md, "utf8");
-  console.log("✅ OpenAI call done, ai_result.json & comment.md generated");
+  // Format and save markdown comment
+  const markdownComment = formatMarkdownComment(
+    parsedResult,
+    requestPayload.model,
+    rawDiffLength
+  );
+  writeFile(config.paths.commentMarkdown, markdownComment);
+
+  console.log("✅ OpenAI call completed successfully");
+  console.log(`   - Response saved to: ${config.paths.responseJson}`);
+  console.log(`   - Parsed result saved to: ${config.paths.aiResultJson}`);
+  console.log(`   - Comment saved to: ${config.paths.commentMarkdown}`);
+
+  if (parsedResult.issues && Array.isArray(parsedResult.issues)) {
+    console.log(`   - Found ${parsedResult.issues.length} issue(s)`);
+  }
 }
 
-main().catch((err) => {
-  console.error("❌ OpenAI call failed:", err?.message || err);
-  process.exit(1);
-});
+// Execute with error handling
+withErrorHandling(main, "OpenAI API call")();

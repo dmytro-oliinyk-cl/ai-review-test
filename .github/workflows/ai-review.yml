@@ -1,5 +1,5 @@
 # .github/workflows/ai-review.yml
-name: AI Review
+name: AI Code Review
 
 on:
   pull_request:
@@ -7,42 +7,61 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
+env:
+  # OpenAI Configuration
+  MODEL: gpt-5-nano
+  OPENAI_API_URL: https://api.openai.com/v1/responses
+
+  # Diff Configuration
+  DIFF_MAX_CHARS: "150000"
+  DIFF_UNIFIED_LINES: "0"
+
+  # Comment Limits
+  MAX_INLINE: "30"
+
 jobs:
-  step1_checkout:
+  ai-review:
+    name: AI Code Review
     runs-on: ubuntu-latest
+
     steps:
-      - name: (1) Checkout repository (full history)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Full history needed for diff computation
 
-      - name: Debug workflow version & context
-        run: |
-          echo "WF STEP1 VERSION: 2025-11-11"
-          echo "GITHUB_REF: $GITHUB_REF"
-          echo "GITHUB_SHA: $GITHUB_SHA"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      - name: (2) Compute DIFF (base…HEAD, unified=0)
+      - name: Compute diff between base and HEAD
         id: diff
         shell: bash
         run: |
           set -euo pipefail
 
-          # Визначаємо SHA бази та HEAD PR
+          # Get base and head SHAs for the pull request
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.sha }}"
 
-          # Будуємо DIFF (u=0 для точних номерів рядків)
-          git diff --unified=0 "$BASE_SHA...$HEAD_SHA" > diff.patch || true
+          echo "Computing diff: ${BASE_SHA}...${HEAD_SHA}"
 
-          # Лімітуємо довжину DIFF (керується змінною оточення DIFF_MAX_CHARS)
-          LIMIT="${DIFF_MAX_CHARS:-150000}"
+          # Generate diff with unified=0 for precise line numbers
+          git diff --unified=${{ env.DIFF_UNIFIED_LINES }} "$BASE_SHA...$HEAD_SHA" > diff.patch || true
+
+          # Read and measure diff content
           DIFF_CONTENT="$(cat diff.patch || true)"
           RAW_LEN=${#DIFF_CONTENT}
+
+          # Trim diff to maximum allowed size
+          LIMIT="${{ env.DIFF_MAX_CHARS }}"
           printf "%s" "${DIFF_CONTENT:0:${LIMIT}}" > diff.trimmed
           TRIM_LEN=$(wc -c < diff.trimmed | tr -d '[:space:]')
 
-          # Експортуємо вихідні параметри для наступних кроків
+          echo "Diff size: ${RAW_LEN} chars (trimmed to ${TRIM_LEN})"
+
+          # Export outputs for subsequent steps
           {
             echo "raw_len=${RAW_LEN}"
             echo "trim_len=${TRIM_LEN}"
@@ -52,7 +71,8 @@ jobs:
               echo "empty=false"
             fi
           } >> "$GITHUB_OUTPUT"
-      - name: (3) Verify AI instruction files
+
+      - name: Verify AI instruction files
         id: verify_ai
         shell: bash
         run: |
@@ -60,43 +80,62 @@ jobs:
           PROMPT_PATH=".ai/ai-reviewer-instruction.md"
           RULES_PATH=".ai/review-rules.md"
 
-          # Перевірка наявності файлів
+          # Check if required files exist
           [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
           [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
 
-          # Мінімальна діагностика (розмір у байтах)
+          # Get file sizes for diagnostics
           SYS_BYTES=$(wc -c < "$PROMPT_PATH" | tr -d '[:space:]' || echo 0)
           RULES_BYTES=$(wc -c < "$RULES_PATH"  | tr -d '[:space:]' || echo 0)
 
-          echo "AI instruction files found:"
+          echo "✅ AI instruction files found:"
           echo "  - $PROMPT_PATH (${SYS_BYTES} bytes)"
           echo "  - $RULES_PATH (${RULES_BYTES} bytes)"
 
-          # Експортуємо значення для наступних кроків (опційно)
+          # Export for potential use in later steps
           {
             echo "sys_bytes=${SYS_BYTES}"
             echo "rules_bytes=${RULES_BYTES}"
           } >> "$GITHUB_OUTPUT"
-      - name: (4) Build request.json (node script)
+
+      - name: Build OpenAI request payload
         run: node scripts/ai_build_request.js
         env:
-          MODEL: gpt-5-nano
-      - name: (5) Call OpenAI (node script)
-        if: steps.diff.outputs.raw_len != '0'
+          MODEL: ${{ env.MODEL }}
+          DIFF_MAX_CHARS: ${{ env.DIFF_MAX_CHARS }}
+
+      - name: Call OpenAI API for code review
+        if: steps.diff.outputs.empty != 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.AI_API_KEY }}
           OPENAI_API_URL: ${{ env.OPENAI_API_URL }}
           MODEL: ${{ env.MODEL }}
           RAW_DIFF_LEN: ${{ steps.diff.outputs.raw_len }}
         run: node scripts/ai_call_openai.js
-      - name: (6) Create/Update sticky comment
+
+      - name: Post summary comment to PR
+        if: steps.diff.outputs.empty != 'true'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: ai-code-review
           path: comment.md
-      - name: (7) Post inline review comments
-        if: steps.diff.outputs.raw_len != '0'
+
+      - name: Post inline review comments
+        if: steps.diff.outputs.empty != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
-          MAX_INLINE: "30" # ліміт коментарів за один запуск
+          MAX_INLINE: ${{ env.MAX_INLINE }}
         run: node scripts/ai_post_inline.js
+
+      - name: Review summary
+        if: always()
+        run: |
+          echo "📊 AI Code Review Summary"
+          echo "========================="
+          if [[ "${{ steps.diff.outputs.empty }}" == "true" ]]; then
+            echo "ℹ️  No changes to review (empty diff)"
+          else
+            echo "✅ Review completed"
+            echo "Diff size: ${{ steps.diff.outputs.raw_len }} chars"
+            echo "Model: ${{ env.MODEL }}"
+          fi

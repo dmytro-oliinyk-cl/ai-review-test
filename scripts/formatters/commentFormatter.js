@@ -1,0 +1,124 @@
+/**
+ * Formatters for AI review comments and responses
+ * @module formatters/commentFormatter
+ */
+
+/**
+ * Extracts text from OpenAI API response
+ * Handles multiple response formats:
+ * 1. Direct output_text field (Responses API)
+ * 2. Nested output array with message content (Responses API)
+ * 3. Chat Completions format (fallback)
+ *
+ * @param {object} data - The API response data
+ * @returns {string} Extracted text or empty string
+ */
+function extractResponseText(data) {
+  // Format 1: Direct output_text field
+  if (typeof data?.output_text === "string" && data.output_text.trim()) {
+    return data.output_text;
+  }
+
+  // Format 2: Responses API with output array
+  if (Array.isArray(data?.output)) {
+    const chunks = [];
+    for (const part of data.output) {
+      if (part?.type === "message" && Array.isArray(part.content)) {
+        for (const contentItem of part.content) {
+          if (contentItem?.type === "output_text" && typeof contentItem.text === "string") {
+            chunks.push(contentItem.text);
+          }
+        }
+      }
+    }
+    if (chunks.length > 0) {
+      return chunks.join("\n");
+    }
+  }
+
+  // Format 3: Chat Completions API fallback
+  const choice = data?.choices?.[0];
+  if (choice?.message?.content && typeof choice.message.content === "string") {
+    return choice.message.content;
+  }
+
+  return "";
+}
+
+/**
+ * Formats a single issue for inline comment
+ * @param {object} issue - The issue object
+ * @param {string} issue.id - Issue ID (e.g., "CQ-4.08")
+ * @param {string} issue.path - File path
+ * @param {number} issue.line - Line number
+ * @param {string} issue.message - Issue message
+ * @param {string} issue.suggestion - Suggestion for fix
+ * @returns {string} Formatted comment body
+ */
+function formatIssueComment(issue) {
+  const header = `**${issue.id}** at \`${issue.path}:${issue.line}\``;
+  const message = issue.message ? `\n\n${issue.message}` : "";
+  const suggestion = issue.suggestion ? `\n\n**Suggestion:** ${issue.suggestion}` : "";
+  return header + message + suggestion;
+}
+
+/**
+ * Formats the AI result as a markdown comment
+ * @param {object} result - The parsed AI result
+ * @param {string} model - The model used
+ * @param {number} rawDiffLength - The raw diff length in characters
+ * @returns {string} Formatted markdown comment
+ */
+function formatMarkdownComment(result, model, rawDiffLength) {
+  const lines = [
+    "### 🤖 AI Code Review",
+    `_Model: \`${model}\` • raw diff: ${rawDiffLength} chars_`,
+    "",
+  ];
+
+  if (result?.issues && Array.isArray(result.issues) && result.issues.length > 0) {
+    lines.push(`Found **${result.issues.length}** issue(s):`);
+    lines.push("");
+    result.issues.forEach((issue, index) => {
+      lines.push(`${index + 1}. **${issue.id}** - \`${issue.path}:${issue.line}\``);
+      if (issue.message) {
+        lines.push(`   ${issue.message}`);
+      }
+    });
+  } else {
+    lines.push("✅ No issues found!");
+  }
+
+  lines.push("");
+  lines.push("<details>");
+  lines.push("<summary>View full JSON response</summary>");
+  lines.push("");
+  lines.push("```json");
+  lines.push(JSON.stringify(result, null, 2));
+  lines.push("```");
+  lines.push("</details>");
+
+  return lines.join("\n");
+}
+
+/**
+ * Validates that an issue has required fields for posting
+ * @param {object} issue - The issue to validate
+ * @returns {boolean} True if valid
+ */
+function isValidIssue(issue) {
+  return (
+    issue &&
+    typeof issue.path === "string" &&
+    issue.path.length > 0 &&
+    Number.isInteger(issue.line) &&
+    issue.line > 0
+  );
+}
+
+module.exports = {
+  extractResponseText,
+  formatIssueComment,
+  formatMarkdownComment,
+  isValidIssue,
+};
