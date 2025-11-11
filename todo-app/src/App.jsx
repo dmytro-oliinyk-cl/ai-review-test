@@ -1,37 +1,42 @@
-import { useState } from 'react'
-import './App.css'
+import { useState } from "react";
+import "./App.css";
 
 function App() {
-  const [todos, setTodos] = useState([])
-  const [inputValue, setInputValue] = useState('')
+  const [todos, setTodos] = useState([]);
+  const [inputValue, setInputValue] = useState("");
 
   const addTodo = () => {
-    if (inputValue.trim() !== '') {
-      setTodos([...todos, { id: Date.now(), text: inputValue, completed: false }])
-      setInputValue('')
+    if (inputValue.trim() !== "") {
+      setTodos([
+        ...todos,
+        { id: Date.now(), text: inputValue, completed: false },
+      ]);
+      setInputValue("");
     }
-  }
+  };
 
   const toggleTodo = (id) => {
-    setTodos(todos.map(todo =>
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
-    ))
-  }
+    setTodos(
+      todos.map((todo) =>
+        todo.id === id ? { ...todo, completed: !todo.completed } : todo
+      )
+    );
+  };
 
   const deleteTodo = (id) => {
-    setTodos(todos.filter(todo => todo.id !== id))
-  }
+    setTodos(todos.filter((todo) => todo.id !== id));
+  };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      addTodo()
+    if (e.key === "Enter") {
+      addTodo();
     }
-  }
+  };
 
   return (
     <div className="app">
       <div className="todo-container">
-        <h1>My Todo App</h1>
+        <h1>My Todo App with AI Review</h1>
 
         <div className="input-section">
           <input
@@ -51,9 +56,15 @@ function App() {
           {todos.length === 0 ? (
             <p className="empty-message">No todos yet. Add one above!</p>
           ) : (
-            todos.map(todo => (
-              <li key={todo.id} className={`todo-item ${todo.completed ? 'completed' : ''}`}>
-                <div className="todo-content" onClick={() => toggleTodo(todo.id)}>
+            todos.map((todo) => (
+              <li
+                key={todo.id}
+                className={`todo-item ${todo.completed ? "completed" : ""}`}
+              >
+                <div
+                  className="todo-content"
+                  onClick={() => toggleTodo(todo.id)}
+                >
                   <input
                     type="checkbox"
                     checked={todo.completed}
@@ -62,7 +73,10 @@ function App() {
                   />
                   <span className="todo-text">{todo.text}</span>
                 </div>
-                <button onClick={() => deleteTodo(todo.id)} className="delete-button">
+                <button
+                  onClick={() => deleteTodo(todo.id)}
+                  className="delete-button"
+                >
                   Delete
                 </button>
               </li>
@@ -71,11 +85,14 @@ function App() {
         </ul>
 
         <div className="footer">
-          <p>{todos.filter(t => !t.completed).length} of {todos.length} tasks remaining</p>
+          <p>
+            {todos.filter((t) => !t.completed).length} of {todos.length} tasks
+            remaining
+          </p>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
