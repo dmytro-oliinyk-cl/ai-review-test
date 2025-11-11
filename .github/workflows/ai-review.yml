@@ -1,5 +1,5 @@
-# .github/workflows/ai-step1-checkout.yml
-name: AI Review — Step 1: Checkout
+# .github/workflows/ai-review.yml
+name: AI Review
 
 on:
   pull_request:
