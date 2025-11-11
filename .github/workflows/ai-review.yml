@@ -4,8 +4,8 @@ name: AI Code Review
 on:
   pull_request:
     branches: [ main ]
-    types: [opened]   # запускаємо лише при відкритті PR
-  workflow_dispatch:   # опційно: ручний запуск з Actions
+    types: [ opened ]      # запуск лише при відкритті PR
+  workflow_dispatch:        # опційно: ручний запуск з Actions
 
 permissions:
   contents: read
@@ -16,17 +16,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
-      MODEL: gpt-5-nano                   # <-- заміни на ваш ID моделі
+      MODEL: gpt-5-nano
       OPENAI_API_URL: https://api.openai.com/v1/responses
-      DIFF_MAX_CHARS: "150000"            # просте обмеження довжини DIFF
+      DIFF_MAX_CHARS: "150000"   # контроль довжини DIFF
+
     steps:
-      # (1) ЧЕКАУТ
+      # (1) Checkout
       - name: (1) Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # (2) ВИЗНАЧИТИ ДІФИ base…HEAD
+      # (2) Compute DIFF base…HEAD і триммінг
       - name: (2) Compute DIFF (base…HEAD, unified=0)
         id: diff
         shell: bash
@@ -37,77 +38,116 @@ jobs:
 
           git diff --unified=0 "$BASE_SHA...$HEAD_SHA" > diff.patch || true
 
-          # Триммінг DIFF для контролю токенів/вартості
           DIFF_CONTENT="$(cat diff.patch || true)"
-          echo "raw_len=${#DIFF_CONTENT}" >> $GITHUB_OUTPUT
+          echo "raw_len=${#DIFF_CONTENT}" >> "$GITHUB_OUTPUT"
           printf "%s" "${DIFF_CONTENT:0:${DIFF_MAX_CHARS}}" > diff.trimmed
 
           if [[ ! -s diff.trimmed ]]; then
-            echo "⚠️ Empty diff detected (nothing to review)." > comment.md
-            echo "raw_len=0" >> $GITHUB_OUTPUT
+            {
+              echo "### 🤖 AI Code Review"
+              echo "_Model: \`${MODEL}\` • raw diff: 0 chars_"
+              echo
+              echo "No changes to review (empty diff)."
+            } > comment.md
+            echo "raw_len=0" >> "$GITHUB_OUTPUT"
           fi
-- name: (3) Read AI instruction files
+
+      # (3) Перевірити наявність інструкцій
+      - name: (3) Verify AI instruction files
         shell: bash
         run: |
           set -euo pipefail
-          PROMPT_PATH=".ai/ai-reviewer-instruction.md"
-          RULES_PATH=".ai/review-rules.md"
-          [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
-          [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
+          [[ -f ".ai/ai-reviewer-instruction.md" ]] || { echo "❌ Missing .ai/ai-reviewer-instruction.md"; exit 1; }
+          [[ -f ".ai/review-rules.md"           ]] || { echo "❌ Missing .ai/review-rules.md"; exit 1; }
 
-      - name: (4) Build request.json (safe via jq --rawfile)
-        id: build
+      # (4) Build request.json (Python; без jq)
+      - name: (4) Build request.json
         shell: bash
         run: |
           set -euo pipefail
-          [[ -f diff.trimmed ]] || : > diff.trimmed
-          jq -n \
-            --arg model "$MODEL" \
-            --rawfile sys   ".ai/ai-reviewer-instruction.md" \
-            --rawfile rules ".ai/review-rules.md" \
-            --rawfile diff  "diff.trimmed" \
-            '{
-              model: $model,
-              response_format: { type: "json_object" },
-              input: [
-                { "role": "system", "content": $sys },
-                { "role": "user",   "content": ("Rules:\n" + $rules + "\n\nDIFF:\n" + $diff) }
-              ]
-            }' > request.json
+          python3 - <<'PY'
+import json, io
 
+def read(path):
+    try:
+        with io.open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
+
+model = "gpt-5-nano"
+sys_prompt = read(".ai/ai-reviewer-instruction.md")
+rules      = read(".ai/review-rules.md")
+diff       = read("diff.trimmed")
+
+payload = {
+  "model": model,
+  "response_format": {"type": "json_object"},
+  "input": [
+    {"role": "system", "content": sys_prompt},
+    {"role": "user",   "content": f"Rules:\n{rules}\n\nDIFF:\n{diff}"}
+  ]
+}
+
+with io.open("request.json", "w", encoding="utf-8") as f:
+  json.dump(payload, f, ensure_ascii=False)
+PY
+
+      # (5) Call OpenAI і розбір відповіді (Python)
       - name: (5) Call OpenAI
         id: openai
         if: steps.diff.outputs.raw_len != '0'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_URL: ${{ env.OPENAI_API_URL }}
+          MODEL: ${{ env.MODEL }}
         shell: bash
         run: |
           set -euo pipefail
+
           RESP=$(curl -sS -X POST "$OPENAI_API_URL" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
             --data @request.json)
+          printf "%s" "$RESP" > response.json
 
-          # Підтримуємо обидва ендпойнти:
-          #  - Responses API: .output_text
-          #  - Chat Completions: .choices[0].message.content
-          RESULT=$(echo "$RESP" | jq -r '
-            .output_text
-            // (.choices[0].message.content // "")
-            // ""
-          ')
+          python3 - <<'PY'
+import json, io, sys
+# Прочитати сирий response
+with io.open("response.json","r",encoding="utf-8") as f:
+    resp = json.load(f)
 
-          echo "$RESULT" | jq . > ai_result.json 2>/dev/null || echo '{}' > ai_result.json
+# Responses API: 'output_text', фолбек на Chat Completions
+text = resp.get("output_text")
+if not text:
+    choices = resp.get("choices") or []
+    if choices and isinstance(choices, list):
+        msg = choices[0].get("message") if choices[0] else None
+        if msg:
+            text = msg.get("content")
 
-          {
-            echo "### 🤖 AI Code Review"
-            echo "_Model: \`${MODEL}\` • raw diff: ${{ steps.diff.outputs.raw_len }} chars_"
-            echo
-            echo "\`\`\`json"
-            cat ai_result.json
-            echo "\`\`\`"
-          } > comment.md
+if not text or not isinstance(text, str):
+    text = "{}"
 
+# Cпробувати розпарсити як JSON {"issues":[...]}
+try:
+    data = json.loads(text)
+except Exception:
+    data = {}
+
+with io.open("ai_result.json","w",encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+
+# Зібрати markdown-коментар
+with io.open("comment.md","w",encoding="utf-8") as out:
+    out.write("### 🤖 AI Code Review\n")
+    out.write("_Model: `gpt-5-nano`_\n\n")
+    out.write("```json\n")
+    out.write(json.dumps(data, ensure_ascii=False, indent=2))
+    out.write("\n```\n")
+PY
+
+      # (6) Sticky-коментар у PR
       - name: (6) Create/Update sticky comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
