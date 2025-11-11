@@ -139,3 +139,18 @@ jobs:
             echo "Diff size: ${{ steps.diff.outputs.raw_len }} chars"
             echo "Model: ${{ env.MODEL }}"
           fi
+
+      - name: Upload debug artifacts
+        if: always() && steps.diff.outputs.empty != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-debug
+          path: |
+            request.json
+            response.json
+            ai_result.json
+            ai_raw_text.txt
+            comment.md
+            diff.patch
+            diff.trimmed
+          retention-days: 7
