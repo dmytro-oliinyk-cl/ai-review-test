@@ -46,43 +46,35 @@ jobs:
             echo "⚠️ Empty diff detected (nothing to review)." > comment.md
             echo "raw_len=0" >> $GITHUB_OUTPUT
           fi
-
-      # (3) ПРОЧИТАТИ ЗАДАЧІ ДЛЯ АІ З ФАЙЛІВ
 - name: (3) Read AI instruction files
-  shell: bash
-  run: |
-    set -euo pipefail
-    PROMPT_PATH=".ai/ai-reviewer-instruction.md"
-    RULES_PATH=".ai/review-rules.md"
-    [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
-    [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
-    # на цьому кроці нічого не виводимо — файли прочитає jq у кроці (4)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROMPT_PATH=".ai/ai-reviewer-instruction.md"
+          RULES_PATH=".ai/review-rules.md"
+          [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
+          [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
 
-# (4) СТВОРИТИ JSON (DIFF + ЗАДАЧІ) БЕЗПЕЧНО ЧЕРЕЗ --rawfile
-- name: (4) Build request.json (safe via jq --rawfile)
-  id: build
-  shell: bash
-  run: |
-    set -euo pipefail
-    # Якщо з якоїсь причини diff.trimmed відсутній — зробимо порожній
-    [[ -f diff.trimmed ]] || : > diff.trimmed
+      - name: (4) Build request.json (safe via jq --rawfile)
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f diff.trimmed ]] || : > diff.trimmed
+          jq -n \
+            --arg model "$MODEL" \
+            --rawfile sys   ".ai/ai-reviewer-instruction.md" \
+            --rawfile rules ".ai/review-rules.md" \
+            --rawfile diff  "diff.trimmed" \
+            '{
+              model: $model,
+              response_format: { type: "json_object" },
+              input: [
+                { "role": "system", "content": $sys },
+                { "role": "user",   "content": ("Rules:\n" + $rules + "\n\nDIFF:\n" + $diff) }
+              ]
+            }' > request.json
 
-    jq -n \
-      --arg model "$MODEL" \
-      --rawfile sys   ".ai/ai-reviewer-instruction.md" \
-      --rawfile rules ".ai/review-rules.md" \
-      --rawfile diff  "diff.trimmed" \
-      '{
-        model: $model,
-        response_format: { type: "json_object" },
-        messages: [
-          { "role": "system", "content": $sys },
-          { "role": "user",   "content": ("Rules:\n" + $rules + "\n\nDIFF:\n" + $diff) }
-        ]
-      }' > request.json
-
-
-      # (5) ВІДПРАВИТИ ЗАПИТ ДО OPENAI
       - name: (5) Call OpenAI
         id: openai
         if: steps.diff.outputs.raw_len != '0'
@@ -91,19 +83,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           RESP=$(curl -sS -X POST "$OPENAI_API_URL" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
             --data @request.json)
 
-          # Дістати JSON-відповідь моделі (очікуємо {"issues":[...]})
-          RESULT=$(echo "$RESP" | jq -r '.choices[0].message.content // "{}"')
+          # Підтримуємо обидва ендпойнти:
+          #  - Responses API: .output_text
+          #  - Chat Completions: .choices[0].message.content
+          RESULT=$(echo "$RESP" | jq -r '
+            .output_text
+            // (.choices[0].message.content // "")
+            // ""
+          ')
 
-          # Якщо модель раптом повернула не-JSON, спробуємо розібрати
           echo "$RESULT" | jq . > ai_result.json 2>/dev/null || echo '{}' > ai_result.json
 
-          # Підготуємо markdown-звіт
           {
             echo "### 🤖 AI Code Review"
             echo "_Model: \`${MODEL}\` • raw diff: ${{ steps.diff.outputs.raw_len }} chars_"
@@ -113,7 +108,6 @@ jobs:
             echo "\`\`\`"
           } > comment.md
 
-      # (6) НАПИСАТИ КОМЕНТАР У PR (sticky)
       - name: (6) Create/Update sticky comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
