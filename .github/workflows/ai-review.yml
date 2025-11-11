@@ -4,12 +4,23 @@ name: AI Code Review
 on:
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened]      # запуск лише при відкритті PR
-  workflow_dispatch:        # опційно: ручний запуск з Actions
+    types: [ opened, synchronize, reopened, ready_for_review ]  # synchronize = кожен пуш у PR
+  workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: write
+
+# --- Concurrency ---
+# Варіант A: НЕ скасовувати попередні ран-и (кожен коміт відпрацьовує)
+concurrency:
+  group: ai-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+# Варіант B: СКАСОВУВАТИ попередні ран-и (лише останній коміт)
+# concurrency:
+#   group: ai-review-pr-${{ github.event.pull_request.number }}
+#   cancel-in-progress: true
 
 jobs:
   ai_review:
@@ -18,7 +29,7 @@ jobs:
     env:
       MODEL: gpt-5-nano
       OPENAI_API_URL: https://api.openai.com/v1/responses
-      DIFF_MAX_CHARS: "150000"   # контроль довжини DIFF
+      DIFF_MAX_CHARS: "150000"
 
     steps:
       # (1) Checkout
@@ -112,12 +123,10 @@ PY
           printf "%s" "$RESP" > response.json
 
           python3 - <<'PY'
-import json, io, sys
-# Прочитати сирий response
+import json, io
 with io.open("response.json","r",encoding="utf-8") as f:
     resp = json.load(f)
 
-# Responses API: 'output_text', фолбек на Chat Completions
 text = resp.get("output_text")
 if not text:
     choices = resp.get("choices") or []
@@ -129,7 +138,6 @@ if not text:
 if not text or not isinstance(text, str):
     text = "{}"
 
-# Cпробувати розпарсити як JSON {"issues":[...]}
 try:
     data = json.loads(text)
 except Exception:
@@ -138,7 +146,6 @@ except Exception:
 with io.open("ai_result.json","w",encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
 
-# Зібрати markdown-коментар
 with io.open("comment.md","w",encoding="utf-8") as out:
     out.write("### 🤖 AI Code Review\n")
     out.write("_Model: `gpt-5-nano`_\n\n")
