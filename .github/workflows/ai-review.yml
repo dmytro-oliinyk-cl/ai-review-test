@@ -1,140 +1,23 @@
-# .github/workflows/ai-review.yml
-name: AI Code Review
+# .github/workflows/ai-step1-checkout.yml
+name: AI Review — Step 1: Checkout
 
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pull-requests: write
-
-concurrency:
-  group: ai-review-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
-
 jobs:
-  ai_review:
+  step1_checkout:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    env:
-      MODEL: gpt-5-nano
-      OPENAI_API_URL: https://api.openai.com/v1/responses
-      DIFF_MAX_CHARS: "150000"
-
     steps:
-      - name: (1) Checkout
+      - name: (1) Checkout repository (full history)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: (2) Compute DIFF base...HEAD
-        id: diff
-        shell: bash
+      - name: Debug workflow version & context
         run: |
-          set -euo pipefail
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.sha }}"
-          git diff --unified=0 "$BASE_SHA...$HEAD_SHA" > diff.patch || true
-          DIFF_CONTENT="$(cat diff.patch || true)"
-          echo "raw_len=${#DIFF_CONTENT}" >> "$GITHUB_OUTPUT"
-          printf "%s" "${DIFF_CONTENT:0:${DIFF_MAX_CHARS}}" > diff.trimmed
-          if [[ ! -s diff.trimmed ]]; then
-            {
-              echo "### AI Code Review"
-              echo "_Model: ${MODEL} · raw diff: 0 chars_"
-              echo
-              echo "No changes to review (empty diff)."
-            } > comment.md
-            echo "raw_len=0" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: (3) Verify AI instruction files
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ -f ".ai/ai-reviewer-instruction.md" ]] || { echo "Missing .ai/ai-reviewer-instruction.md"; exit 1; }
-          [[ -f ".ai/review-rules.md"           ]] || { echo "Missing .ai/review-rules.md"; exit 1; }
-
-      - name: (4) Build request.json (python)
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-import json, io
-
-def read(path):
-    try:
-        with io.open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return ""
-
-model = "gpt-5-nano"
-sys_prompt = read(".ai/ai-reviewer-instruction.md")
-rules      = read(".ai/review-rules.md")
-diff       = read("diff.trimmed")
-
-payload = {
-  "model": model,
-  "response_format": {"type": "json_object"},
-  "input": [
-    {"role": "system", "content": sys_prompt},
-    {"role": "user",   "content": f"Rules:\n{rules}\n\nDIFF:\n{diff}"}
-  ]
-}
-
-with io.open("request.json", "w", encoding="utf-8") as f:
-  json.dump(payload, f, ensure_ascii=False)
-PY
-
-      - name: (5) Call OpenAI
-        id: openai
-        if: steps.diff.outputs.raw_len != '0'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_URL: ${{ env.OPENAI_API_URL }}
-          MODEL: ${{ env.MODEL }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          RESP=$(curl -sS -X POST "$OPENAI_API_URL" \
-            -H "Authorization: Bearer $OPENAI_API_KEY" \
-            -H "Content-Type: application/json" \
-            --data @request.json)
-          printf "%s" "$RESP" > response.json
-
-          python3 - <<'PY'
-import json, io
-with io.open("response.json","r",encoding="utf-8") as f:
-    resp = json.load(f)
-text = resp.get("output_text")
-if not text:
-    choices = resp.get("choices") or []
-    if choices and isinstance(choices, list):
-        msg = choices[0].get("message") if choices[0] else None
-        if msg:
-            text = msg.get("content")
-if not text or not isinstance(text, str):
-    text = "{}"
-try:
-    data = json.loads(text)
-except Exception:
-    data = {}
-with io.open("ai_result.json","w",encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
-with io.open("comment.md","w",encoding="utf-8") as out:
-    out.write("### AI Code Review\n")
-    out.write(f"_Model: `{model}`_\n\n")
-    out.write("```json\n")
-    out.write(json.dumps(data, ensure_ascii=False, indent=2))
-    out.write("\n```\n")
-PY
-
-      - name: (6) Create/Update sticky comment
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: ai-code-review
-          path: comment.md
+          echo "WF STEP1 VERSION: 2025-11-11"
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "GITHUB_SHA: $GITHUB_SHA"
