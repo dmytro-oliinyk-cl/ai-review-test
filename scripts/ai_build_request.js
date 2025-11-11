@@ -9,7 +9,7 @@ const diff = read("diff.trimmed");
 
 const payload = {
   model,
-  response_format: { type: "json_object" },
+  text: { format: "json" }, // <-- ДОДАТИ
   input: [
     { role: "system", content: sys },
     { role: "user", content: `Rules:\n${rules}\n\nDIFF:\n${diff}` },
