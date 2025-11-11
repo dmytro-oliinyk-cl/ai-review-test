@@ -1,0 +1,110 @@
+# .github/workflows/ai-review.yml
+name: AI Code Review
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MODEL: gpt-5-nano         # або ваш модельний ID
+      OPENAI_API_URL: https://api.openai.com/v1/chat/completions
+      DIFF_MAX_CHARS: "150000"      # простий throttle по довжині
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute DIFF (base…HEAD, unified=0)
+        id: diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.sha }}"
+          git diff --unified=0 "$BASE_SHA...$HEAD_SHA" > diff.patch || true
+
+          # Обрізка DIFF, щоб контролювати токени/вартість
+          DIFF_CONTENT="$(cat diff.patch)"
+          echo "raw_len=${#DIFF_CONTENT}" >> $GITHUB_OUTPUT
+          echo "${DIFF_CONTENT:0:${DIFF_MAX_CHARS}}" > diff.trimmed
+
+      - name: Read prompts & rules
+        id: inputs
+        shell: bash
+        run: |
+          PROMPT_PATH=".ai/ai-reviewer-instruction.md"
+          RULES_PATH=".ai/review-rules.md"
+
+          if [[ ! -f "$PROMPT_PATH" || ! -f "$RULES_PATH" ]]; then
+            echo "❌ Missing .ai files"; exit 1
+          fi
+
+          # Безпечне екранування у JSON через jq -Rs
+          SYS=$(jq -Rs . < "$PROMPT_PATH")
+          RULES=$(jq -Rs . < "$RULES_PATH")
+          DIFF=$(jq -Rs . < diff.trimmed)
+
+          cat > payload.json <<'JSON'
+          {
+            "model": "REPLACE_ME",
+            "response_format": { "type": "json_object" },
+            "messages": [
+              { "role": "system", "content": PLACEHOLDER_SYS },
+              { "role": "user", "content": "Rules:\nPLACEHOLDER_RULES\n\nDIFF:\nPLACEHOLDER_DIFF" }
+            ]
+          }
+          JSON
+
+          # Підміняємо плейсхолдери
+          jq \
+            --arg m "$MODEL" \
+            --argjson SYS "$SYS" \
+            --arg RULES $(cat "$RULES_PATH" | jq -Rs .) \
+            --arg DIFF  "$(cat diff.trimmed | jq -Rs .)" \
+            '.model=$m
+             | (.messages[0].content)=$SYS
+             | (.messages[1].content)=("Rules:\n"+$RULES+"\n\nDIFF:\n"+($DIFF|fromjson))' \
+            payload.json > request.json
+
+          echo "made_request_json=true" >> $GITHUB_OUTPUT
+
+      - name: Call OpenAI
+        id: openai
+        env:
+          OPENAI_API_KEY: ${{ secrets.AI_API_KEY }}
+        run: |
+          set -e
+          RESP=$(curl -sS -X POST "$OPENAI_API_URL" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data @request.json)
+
+          # Дістаємо текст відповіді (JSON з {"issues":[...]})
+          RESULT=$(echo "$RESP" | jq -r '.choices[0].message.content // ""')
+          echo "$RESULT" > ai_result.json
+
+          # Готуємо стислий markdown-звіт
+          echo "### 🤖 AI Code Review"            >  comment.md
+          echo "_Model: \`${MODEL}\` • raw diff: ${{ steps.diff.outputs.raw_len }} chars_" >> comment.md
+          echo ""                                 >> comment.md
+          echo "\`\`\`json"                       >> comment.md
+          cat ai_result.json                      >> comment.md
+          echo "\`\`\`"                           >> comment.md
+
+      - name: Create/Update sticky comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ai-code-review
+          path: comment.md
