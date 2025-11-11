@@ -94,3 +94,9 @@ jobs:
         with:
           header: ai-code-review
           path: comment.md
+      - name: (7) Post inline review comments
+        if: steps.diff.outputs.raw_len != '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
+          MAX_INLINE: "30" # ліміт коментарів за один запуск
+        run: node scripts/ai_post_inline.js
