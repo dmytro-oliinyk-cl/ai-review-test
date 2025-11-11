@@ -48,41 +48,39 @@ jobs:
           fi
 
       # (3) ПРОЧИТАТИ ЗАДАЧІ ДЛЯ АІ З ФАЙЛІВ
-      - name: (3) Read AI instructions
-        id: read_ai
-        shell: bash
-        run: |
-          set -euo pipefail
-          PROMPT_PATH=".ai/ai-reviewer-instruction.md"
-          RULES_PATH=".ai/review-rules.md"
+- name: (3) Read AI instruction files
+  shell: bash
+  run: |
+    set -euo pipefail
+    PROMPT_PATH=".ai/ai-reviewer-instruction.md"
+    RULES_PATH=".ai/review-rules.md"
+    [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
+    [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
+    # на цьому кроці нічого не виводимо — файли прочитає jq у кроці (4)
 
-          [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
-          [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
+# (4) СТВОРИТИ JSON (DIFF + ЗАДАЧІ) БЕЗПЕЧНО ЧЕРЕЗ --rawfile
+- name: (4) Build request.json (safe via jq --rawfile)
+  id: build
+  shell: bash
+  run: |
+    set -euo pipefail
+    # Якщо з якоїсь причини diff.trimmed відсутній — зробимо порожній
+    [[ -f diff.trimmed ]] || : > diff.trimmed
 
-          # Нічого не виводимо тут — файли прочитає jq у наступному кроці
+    jq -n \
+      --arg model "$MODEL" \
+      --rawfile sys   ".ai/ai-reviewer-instruction.md" \
+      --rawfile rules ".ai/review-rules.md" \
+      --rawfile diff  "diff.trimmed" \
+      '{
+        model: $model,
+        response_format: { type: "json_object" },
+        messages: [
+          { "role": "system", "content": $sys },
+          { "role": "user",   "content": ("Rules:\n" + $rules + "\n\nDIFF:\n" + $diff) }
+        ]
+      }' > request.json
 
-      # (4) СТВОРИТИ JSON (DIFF + ЗАДАЧІ)
-      - name: (4) Build request.json (safe via jq --rawfile)
-        id: build
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          jq -n \
-            --arg model "$MODEL" \
-            --rawfile sys   ".ai/ai-reviewer-instruction.md" \
-            --rawfile rules ".ai/review-rules.md" \
-            --rawfile diff  "diff.trimmed" \
-            '{
-              model: $model,
-              response_format: { type: "json_object" },
-              messages: [
-                { "role": "system", "content": $sys },
-                { "role": "user",   "content": ("Rules:\n" + $rules + "\n\nDIFF:\n" + $diff) }
-              ]
-            }' > request.json
-
-          echo "made_request_json=true" >> $GITHUB_OUTPUT
 
       # (5) ВІДПРАВИТИ ЗАПИТ ДО OPENAI
       - name: (5) Call OpenAI
