@@ -77,13 +77,7 @@ jobs:
             echo "sys_bytes=${SYS_BYTES}"
             echo "rules_bytes=${RULES_BYTES}"
           } >> "$GITHUB_OUTPUT"
-      - name: (4) Build request.json (python one-liner, no heredoc)
-        id: build_request
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -c 'import os,io,json,sys; R=lambda p: (io.open(p,"r",encoding="utf-8").read() if os.path.exists(p) else ""); 
-m=os.environ.get("MODEL","gpt-5-nano"); 
-payload={"model":m,"response_format":{"type":"json_object"},"input":[{"role":"system","content":R(".ai/ai-reviewer-instruction.md")},{"role":"user","content":"Rules:\n"+R(".ai/review-rules.md")+"\n\nDIFF:\n"+R("diff.trimmed")}]}; 
-io.open("request.json","w",encoding="utf-8").write(json.dumps(payload,ensure_ascii=False))'
-
+      - name: (4) Build request.json (node script)
+        run: node scripts/ai_build_request.js
+        env:
+          MODEL: gpt-5-nano
