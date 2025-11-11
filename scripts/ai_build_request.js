@@ -9,7 +9,37 @@ const diff = read("diff.trimmed");
 
 const payload = {
   model,
-  text: { format: "json" }, // <-- ДОДАТИ
+  text: {
+    format: {
+      type: "json_schema",
+      json_schema: {
+        name: "AiCodeReviewIssues",
+        schema: {
+          type: "object",
+          properties: {
+            issues: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["id", "path", "line", "message", "suggestion"],
+                properties: {
+                  id: { type: "string" },
+                  path: { type: "string" },
+                  line: { type: "integer" },
+                  message: { type: "string" },
+                  suggestion: { type: "string" },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["issues"],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    },
+  },
   input: [
     { role: "system", content: sys },
     { role: "user", content: `Rules:\n${rules}\n\nDIFF:\n${diff}` },
