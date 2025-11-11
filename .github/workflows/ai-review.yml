@@ -1,26 +1,19 @@
-# .github/workflows/ai-code-review.yml
+# .github/workflows/ai-review.yml
 name: AI Code Review
 
 on:
   pull_request:
-    branches: [ main ]
-    types: [ opened, synchronize, reopened, ready_for_review ]  # synchronize = кожен пуш у PR
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: write
 
-# --- Concurrency ---
-# Варіант A: НЕ скасовувати попередні ран-и (кожен коміт відпрацьовує)
 concurrency:
   group: ai-review-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: false
-
-# Варіант B: СКАСОВУВАТИ попередні ран-и (лише останній коміт)
-# concurrency:
-#   group: ai-review-pr-${{ github.event.pull_request.number }}
-#   cancel-in-progress: true
 
 jobs:
   ai_review:
@@ -32,47 +25,40 @@ jobs:
       DIFF_MAX_CHARS: "150000"
 
     steps:
-      # (1) Checkout
       - name: (1) Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # (2) Compute DIFF base…HEAD і триммінг
-      - name: (2) Compute DIFF (base…HEAD, unified=0)
+      - name: (2) Compute DIFF base...HEAD
         id: diff
         shell: bash
         run: |
           set -euo pipefail
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.sha }}"
-
           git diff --unified=0 "$BASE_SHA...$HEAD_SHA" > diff.patch || true
-
           DIFF_CONTENT="$(cat diff.patch || true)"
           echo "raw_len=${#DIFF_CONTENT}" >> "$GITHUB_OUTPUT"
           printf "%s" "${DIFF_CONTENT:0:${DIFF_MAX_CHARS}}" > diff.trimmed
-
           if [[ ! -s diff.trimmed ]]; then
             {
-              echo "### 🤖 AI Code Review"
-              echo "_Model: \`${MODEL}\` • raw diff: 0 chars_"
+              echo "### AI Code Review"
+              echo "_Model: ${MODEL} · raw diff: 0 chars_"
               echo
               echo "No changes to review (empty diff)."
             } > comment.md
             echo "raw_len=0" >> "$GITHUB_OUTPUT"
           fi
 
-      # (3) Перевірити наявність інструкцій
       - name: (3) Verify AI instruction files
         shell: bash
         run: |
           set -euo pipefail
-          [[ -f ".ai/ai-reviewer-instruction.md" ]] || { echo "❌ Missing .ai/ai-reviewer-instruction.md"; exit 1; }
-          [[ -f ".ai/review-rules.md"           ]] || { echo "❌ Missing .ai/review-rules.md"; exit 1; }
+          [[ -f ".ai/ai-reviewer-instruction.md" ]] || { echo "Missing .ai/ai-reviewer-instruction.md"; exit 1; }
+          [[ -f ".ai/review-rules.md"           ]] || { echo "Missing .ai/review-rules.md"; exit 1; }
 
-      # (4) Build request.json (Python; без jq)
-      - name: (4) Build request.json
+      - name: (4) Build request.json (python)
         shell: bash
         run: |
           set -euo pipefail
@@ -104,7 +90,6 @@ with io.open("request.json", "w", encoding="utf-8") as f:
   json.dump(payload, f, ensure_ascii=False)
 PY
 
-      # (5) Call OpenAI і розбір відповіді (Python)
       - name: (5) Call OpenAI
         id: openai
         if: steps.diff.outputs.raw_len != '0'
@@ -115,7 +100,6 @@ PY
         shell: bash
         run: |
           set -euo pipefail
-
           RESP=$(curl -sS -X POST "$OPENAI_API_URL" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
@@ -126,7 +110,6 @@ PY
 import json, io
 with io.open("response.json","r",encoding="utf-8") as f:
     resp = json.load(f)
-
 text = resp.get("output_text")
 if not text:
     choices = resp.get("choices") or []
@@ -134,27 +117,22 @@ if not text:
         msg = choices[0].get("message") if choices[0] else None
         if msg:
             text = msg.get("content")
-
 if not text or not isinstance(text, str):
     text = "{}"
-
 try:
     data = json.loads(text)
 except Exception:
     data = {}
-
 with io.open("ai_result.json","w",encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-
 with io.open("comment.md","w",encoding="utf-8") as out:
-    out.write("### 🤖 AI Code Review\n")
-    out.write("_Model: `gpt-5-nano`_\n\n")
+    out.write("### AI Code Review\n")
+    out.write(f"_Model: `{model}`_\n\n")
     out.write("```json\n")
     out.write(json.dumps(data, ensure_ascii=False, indent=2))
     out.write("\n```\n")
 PY
 
-      # (6) Sticky-коментар у PR
       - name: (6) Create/Update sticky comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
