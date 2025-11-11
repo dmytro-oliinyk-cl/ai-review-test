@@ -81,3 +81,16 @@ jobs:
         run: node scripts/ai_build_request.js
         env:
           MODEL: gpt-5-nano
+      - name: (5) Call OpenAI (node script)
+        if: steps.diff.outputs.raw_len != '0'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_URL: ${{ env.OPENAI_API_URL }}
+          MODEL: ${{ env.MODEL }}
+          RAW_DIFF_LEN: ${{ steps.diff.outputs.raw_len }}
+        run: node scripts/ai_call_openai.js
+      - name: (6) Create/Update sticky comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ai-code-review
+          path: comment.md
