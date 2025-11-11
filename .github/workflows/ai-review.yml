@@ -77,3 +77,38 @@ jobs:
             echo "sys_bytes=${SYS_BYTES}"
             echo "rules_bytes=${RULES_BYTES}"
           } >> "$GITHUB_OUTPUT"
+      - name: (4) Build request.json (python)
+        id: build_request
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+import os, io, json
+
+MODEL = os.environ.get("MODEL", "gpt-5-nano")
+
+def read(path):
+    try:
+        with io.open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
+
+sys_prompt = read(".ai/ai-reviewer-instruction.md")
+rules      = read(".ai/review-rules.md")
+diff       = read("diff.trimmed")  # може бути порожнім, це ок
+
+payload = {
+  "model": MODEL,
+  "response_format": {"type": "json_object"},
+  "input": [
+    {"role": "system", "content": sys_prompt},
+    {"role": "user",   "content": f"Rules:\n{rules}\n\nDIFF:\n{diff}"}
+  ]
+}
+
+with io.open("request.json", "w", encoding="utf-8") as f:
+  json.dump(payload, f, ensure_ascii=False)
+print("request.json built ✅")
+PY
+
