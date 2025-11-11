@@ -52,3 +52,28 @@ jobs:
               echo "empty=false"
             fi
           } >> "$GITHUB_OUTPUT"
+      - name: (3) Verify AI instruction files
+        id: verify_ai
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROMPT_PATH=".ai/ai-reviewer-instruction.md"
+          RULES_PATH=".ai/review-rules.md"
+
+          # Перевірка наявності файлів
+          [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
+          [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
+
+          # Мінімальна діагностика (розмір у байтах)
+          SYS_BYTES=$(wc -c < "$PROMPT_PATH" | tr -d '[:space:]' || echo 0)
+          RULES_BYTES=$(wc -c < "$RULES_PATH"  | tr -d '[:space:]' || echo 0)
+
+          echo "AI instruction files found:"
+          echo "  - $PROMPT_PATH (${SYS_BYTES} bytes)"
+          echo "  - $RULES_PATH (${RULES_BYTES} bytes)"
+
+          # Експортуємо значення для наступних кроків (опційно)
+          {
+            echo "sys_bytes=${SYS_BYTES}"
+            echo "rules_bytes=${RULES_BYTES}"
+          } >> "$GITHUB_OUTPUT"
