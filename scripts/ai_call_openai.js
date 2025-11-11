@@ -17,11 +17,40 @@ function read(path) {
   return fs.existsSync(path) ? fs.readFileSync(path, "utf8") : "";
 }
 
+function extractText(d) {
+  // 1) Пряме поле (інколи присутнє в Responses API)
+  if (typeof d?.output_text === "string" && d.output_text.trim()) {
+    return d.output_text;
+  }
+
+  // 2) Загальний випадок Responses API:
+  //    output[] -> type: "message" -> content[] -> type: "output_text" -> text
+  if (Array.isArray(d?.output)) {
+    const chunks = [];
+    for (const part of d.output) {
+      if (part?.type === "message" && Array.isArray(part.content)) {
+        for (const c of part.content) {
+          if (c?.type === "output_text" && typeof c.text === "string") {
+            chunks.push(c.text);
+          }
+        }
+      }
+    }
+    if (chunks.length) return chunks.join("\n");
+  }
+
+  // 3) Фолбек на Chat Completions
+  const choice = d?.choices?.[0];
+  if (choice?.message?.content && typeof choice.message.content === "string") {
+    return choice.message.content;
+  }
+
+  return "";
+}
+
 async function main() {
   const body = JSON.parse(read("request.json") || "{}");
-
-  // safety: переконаємось, що модель виставлена
-  body.model = body.model || MODEL;
+  body.model = body.model || MODEL; // safety
 
   // timeout на запит
   const ac = new AbortController();
@@ -49,21 +78,16 @@ async function main() {
   }
 
   const data = await resp.json();
-  console.log("data", JSON.stringify(data, null, 2));
-  fs.writeFileSync("response.json", JSON.stringify(data));
+  fs.writeFileSync("response.json", JSON.stringify(data, null, 2), "utf8");
 
-  // Responses API → output_text; fallback на Chat Completions
-  let text = data.output_text;
-  if (
-    !text &&
-    Array.isArray(data.choices) &&
-    data.choices[0]?.message?.content
-  ) {
-    text = data.choices[0].message.content;
-  }
-  if (typeof text !== "string") text = "{}";
+  // Витягаємо відповідь надійно
+  let text = extractText(data);
+  if (!text || typeof text !== "string") text = "{}";
 
-  // намагаємось розпарсити як JSON {"issues":[...]}
+  // Лог сирого тексту для дебага
+  fs.writeFileSync("ai_raw_text.txt", text, "utf8");
+
+  // Парсимо очікуваний JSON {"issues":[...]}
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -71,7 +95,7 @@ async function main() {
     parsed = {};
   }
 
-  fs.writeFileSync("ai_result.json", JSON.stringify(parsed, null, 2));
+  fs.writeFileSync("ai_result.json", JSON.stringify(parsed, null, 2), "utf8");
 
   const md = [
     "### 🤖 AI Code Review",
@@ -82,7 +106,7 @@ async function main() {
     "```",
   ].join("\n");
 
-  fs.writeFileSync("comment.md", md);
+  fs.writeFileSync("comment.md", md, "utf8");
   console.log("✅ OpenAI call done, ai_result.json & comment.md generated");
 }
 
