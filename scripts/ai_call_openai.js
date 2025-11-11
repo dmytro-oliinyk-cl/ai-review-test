@@ -49,6 +49,7 @@ async function main() {
   }
 
   const data = await resp.json();
+  console.log({ data });
   fs.writeFileSync("response.json", JSON.stringify(data));
 
   // Responses API → output_text; fallback на Chat Completions
