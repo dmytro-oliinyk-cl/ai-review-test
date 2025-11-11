@@ -21,3 +21,34 @@ jobs:
           echo "WF STEP1 VERSION: 2025-11-11"
           echo "GITHUB_REF: $GITHUB_REF"
           echo "GITHUB_SHA: $GITHUB_SHA"
+
+      - name: (2) Compute DIFF (base…HEAD, unified=0)
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Визначаємо SHA бази та HEAD PR
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.sha }}"
+
+          # Будуємо DIFF (u=0 для точних номерів рядків)
+          git diff --unified=0 "$BASE_SHA...$HEAD_SHA" > diff.patch || true
+
+          # Лімітуємо довжину DIFF (керується змінною оточення DIFF_MAX_CHARS)
+          LIMIT="${DIFF_MAX_CHARS:-150000}"
+          DIFF_CONTENT="$(cat diff.patch || true)"
+          RAW_LEN=${#DIFF_CONTENT}
+          printf "%s" "${DIFF_CONTENT:0:${LIMIT}}" > diff.trimmed
+          TRIM_LEN=$(wc -c < diff.trimmed | tr -d '[:space:]')
+
+          # Експортуємо вихідні параметри для наступних кроків
+          {
+            echo "raw_len=${RAW_LEN}"
+            echo "trim_len=${TRIM_LEN}"
+            if [[ "${TRIM_LEN}" -eq 0 ]]; then
+              echo "empty=true"
+            else
+              echo "empty=false"
+            fi
+          } >> "$GITHUB_OUTPUT"
