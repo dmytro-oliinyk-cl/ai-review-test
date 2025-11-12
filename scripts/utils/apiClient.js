@@ -73,33 +73,60 @@ async function fetchWithRetry(url, options = {}, maxAttempts = config.retry.maxA
 
 /**
  * Calls Google Gemini API with the provided payload
+ * Tries multiple models in fallback order if previous models fail
  * @param {object} payload - The request payload
- * @returns {Promise<object>} The API response
- * @throws {Error} If the API call fails
+ * @returns {Promise<{data: object, modelUsed: string}>} The API response and model used
+ * @throws {Error} If all models fail
  */
 async function callGemini(payload) {
   if (!config.gemini.apiKey) {
     throw new Error("AI_API_KEY is not set");
   }
 
-  // Construct the full URL with model and API key
-  const url = `${config.gemini.apiUrl}/${config.gemini.model}:generateContent?key=${config.gemini.apiKey}`;
+  const modelsToTry = config.gemini.fallbackModels || [config.gemini.model];
+  const errors = [];
 
-  const response = await fetchWithRetry(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    timeout: config.gemini.timeoutMs,
-  });
+  // Try each model in sequence
+  for (const model of modelsToTry) {
+    console.log(`\n🔄 Trying model: ${model}`);
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Gemini API error (HTTP ${response.status}): ${text}`);
+    try {
+      // Construct the full URL with model and API key
+      const url = `${config.gemini.apiUrl}/${model}:generateContent?key=${config.gemini.apiKey}`;
+
+      // Use fewer retries per model (2 attempts) to cycle through models faster
+      const response = await fetchWithRetry(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        timeout: config.gemini.timeoutMs,
+      }, 2);
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`HTTP ${response.status}: ${text}`);
+      }
+
+      const data = await response.json();
+      console.log(`✅ Successfully used model: ${model}`);
+
+      // Return both data and the model that succeeded
+      return { data, modelUsed: model };
+
+    } catch (error) {
+      console.warn(`❌ Model ${model} failed: ${error.message}`);
+      errors.push({ model, error: error.message });
+
+      // Continue to next model
+      continue;
+    }
   }
 
-  return await response.json();
+  // All models failed
+  const errorSummary = errors.map(e => `${e.model}: ${e.error}`).join("; ");
+  throw new Error(`All Gemini models failed. Errors: ${errorSummary}`);
 }
 
 /**

@@ -28,16 +28,13 @@ async function main() {
     throw new Error(`Request file not found: ${config.paths.requestJson}`);
   }
 
-  // Get model from config for logging
-  const modelName = config.gemini.model;
-
-  console.log(`🚀 Calling Google Gemini API (model: ${modelName})...`);
+  console.log(`🚀 Calling Google Gemini API (will try fallback models if needed)...`);
 
   // Log request payload for debugging (without full content to avoid clutter)
   console.log("\n" + "=".repeat(60));
   console.log("📤 REQUEST PAYLOAD SUMMARY");
   console.log("=".repeat(60));
-  console.log(`Model: ${modelName}`);
+  console.log(`Fallback models: ${config.gemini.fallbackModels.join(", ")}`);
   console.log(`Contents: ${requestPayload.contents?.length || 0}`);
   if (requestPayload.contents) {
     requestPayload.contents.forEach((content, i) => {
@@ -49,8 +46,13 @@ async function main() {
   console.log(`Response MIME type: ${requestPayload.generationConfig?.response_mime_type || "N/A"}`);
   console.log("=".repeat(60) + "\n");
 
-  // Call Gemini API with retry logic
-  const apiResponse = await callGemini(requestPayload);
+  // Call Gemini API with retry logic (tries multiple models if needed)
+  const { data: apiResponse, modelUsed } = await callGemini(requestPayload);
+
+  // Log which model was successfully used
+  console.log("\n" + "=".repeat(60));
+  console.log(`✅ Successfully used model: ${modelUsed}`);
+  console.log("=".repeat(60) + "\n");
 
   // Log API response structure for debugging
   console.log("\n" + "=".repeat(60));
@@ -105,7 +107,7 @@ async function main() {
   // Format and save markdown comment
   const markdownComment = formatMarkdownComment(
     parsedResult,
-    modelName,
+    modelUsed,
     rawDiffLength
   );
   writeFile(config.paths.commentMarkdown, markdownComment);
@@ -113,6 +115,7 @@ async function main() {
   console.log("\n" + "=".repeat(60));
   console.log("✅ GEMINI API CALL COMPLETED SUCCESSFULLY");
   console.log("=".repeat(60));
+  console.log(`Model used: ${modelUsed}`);
   console.log(`Response saved to: ${config.paths.responseJson}`);
   console.log(`Parsed result saved to: ${config.paths.aiResultJson}`);
   console.log(`Comment saved to: ${config.paths.commentMarkdown}`);

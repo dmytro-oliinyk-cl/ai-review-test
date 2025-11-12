@@ -11,6 +11,14 @@ module.exports = {
       process.env.GEMINI_API_URL ||
       "https://generativelanguage.googleapis.com/v1beta/models",
     model: process.env.MODEL || "gemini-2.5-flash",
+    // Model fallback list - will try each in order if previous fails
+    fallbackModels: [
+      "gemini-2.5-flash",
+      "gemini-2.5-pro",
+      "gemini-2.0-flash-exp",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro",
+    ],
     timeoutMs: 60000,
   },
 
@@ -40,11 +48,11 @@ module.exports = {
     maxInlineComments: Number(process.env.MAX_INLINE) || 30,
   },
 
-  // Retry Configuration
+  // Retry Configuration (per model, not total)
   retry: {
-    maxAttempts: 5,
-    initialDelayMs: 2000,
-    maxDelayMs: 30000,
+    maxAttempts: 5, // Default, but callGemini uses 2 per model
+    initialDelayMs: 1000,
+    maxDelayMs: 10000,
     backoffMultiplier: 2,
   },
 };
