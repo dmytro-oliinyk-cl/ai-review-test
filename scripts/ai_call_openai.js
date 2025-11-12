@@ -6,8 +6,14 @@
 const config = require("./config");
 const { readJsonFile, writeJsonFile, writeFile } = require("./utils/fileUtils");
 const { callOpenAI } = require("./utils/apiClient");
-const { withErrorHandling, validateRequiredEnvVars } = require("./utils/errorHandler");
-const { extractResponseText, formatMarkdownComment } = require("./formatters/commentFormatter");
+const {
+  withErrorHandling,
+  validateRequiredEnvVars,
+} = require("./utils/errorHandler");
+const {
+  extractResponseText,
+  formatMarkdownComment,
+} = require("./formatters/commentFormatter");
 
 /**
  * Main function to call OpenAI API and process response
@@ -35,8 +41,9 @@ async function main() {
   console.log(`Input messages: ${requestPayload.input?.length || 0}`);
   if (requestPayload.input) {
     requestPayload.input.forEach((msg, i) => {
-      const preview = msg.content.substring(0, 100).replace(/\n/g, " ");
-      console.log(`  [${i}] ${msg.role}: ${preview}${msg.content.length > 100 ? "..." : ""} (${msg.content.length} chars)`);
+      console.log(`  [${i}]: ${JSON.stringify(msg, null, 2)}`);
+      // const preview = msg.content.substring(0, 100).replace(/\n/g, " ");
+      // console.log(`  [${i}] ${msg.role}: ${preview}${msg.content.length > 100 ? "..." : ""} (${msg.content.length} chars)`);
     });
   }
   console.log(`Response format: ${requestPayload.text?.format?.type || "N/A"}`);
@@ -114,7 +121,13 @@ async function main() {
     console.log(`\n🔍 FOUND ${parsedResult.issues.length} ISSUE(S):`);
     if (parsedResult.issues.length > 0) {
       parsedResult.issues.forEach((issue, i) => {
-        console.log(`  ${i + 1}. [${issue.id}] ${issue.path}:${issue.line} - ${issue.message?.substring(0, 60)}${issue.message?.length > 60 ? "..." : ""}`);
+        console.log(
+          `  ${i + 1}. [${issue.id}] ${issue.path}:${
+            issue.line
+          } - ${issue.message?.substring(0, 60)}${
+            issue.message?.length > 60 ? "..." : ""
+          }`
+        );
       });
     } else {
       console.log("  ✅ No code quality issues detected");
