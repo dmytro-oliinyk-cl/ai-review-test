@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
 
 env:
-  # OpenAI Configuration
-  MODEL: gpt-5-mini
-  OPENAI_API_URL: https://api.openai.com/v1/responses
+  # Google Gemini Configuration
+  MODEL: gemini-2.5-flash
+  GEMINI_API_URL: https://generativelanguage.googleapis.com/v1beta/models
 
   # Diff Configuration
   DIFF_MAX_CHARS: "150000"
@@ -98,17 +98,17 @@ jobs:
             echo "rules_bytes=${RULES_BYTES}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build OpenAI request payload
+      - name: Build Gemini request payload
         run: node scripts/ai_build_request.js
         env:
           MODEL: ${{ env.MODEL }}
           DIFF_MAX_CHARS: ${{ env.DIFF_MAX_CHARS }}
 
-      - name: Call OpenAI API for code review
+      - name: Call Google Gemini API for code review
         if: steps.diff.outputs.empty != 'true'
         env:
-          OPENAI_API_KEY: ${{ secrets.AI_API_KEY }}
-          OPENAI_API_URL: ${{ env.OPENAI_API_URL }}
+          GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
+          GEMINI_API_URL: ${{ env.GEMINI_API_URL }}
           MODEL: ${{ env.MODEL }}
           RAW_DIFF_LEN: ${{ steps.diff.outputs.raw_len }}
         run: node scripts/ai_call_openai.js

@@ -30,7 +30,7 @@ async function fetchWithRetry(url, options = {}, maxAttempts = config.retry.maxA
       const controller = new AbortController();
       const timeout = setTimeout(
         () => controller.abort(),
-        options.timeout || config.openai.timeoutMs
+        options.timeout || config.gemini.timeoutMs
       );
 
       const response = await fetch(url, {
@@ -63,29 +63,31 @@ async function fetchWithRetry(url, options = {}, maxAttempts = config.retry.maxA
 }
 
 /**
- * Calls OpenAI API with the provided payload
+ * Calls Google Gemini API with the provided payload
  * @param {object} payload - The request payload
  * @returns {Promise<object>} The API response
  * @throws {Error} If the API call fails
  */
-async function callOpenAI(payload) {
-  if (!config.openai.apiKey) {
-    throw new Error("OPENAI_API_KEY is not set");
+async function callGemini(payload) {
+  if (!config.gemini.apiKey) {
+    throw new Error("GEMINI_API_KEY is not set");
   }
 
-  const response = await fetchWithRetry(config.openai.apiUrl, {
+  // Construct the full URL with model and API key
+  const url = `${config.gemini.apiUrl}/${config.gemini.model}:generateContent?key=${config.gemini.apiKey}`;
+
+  const response = await fetchWithRetry(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${config.openai.apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
-    timeout: config.openai.timeoutMs,
+    timeout: config.gemini.timeoutMs,
   });
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`OpenAI API error (HTTP ${response.status}): ${text}`);
+    throw new Error(`Gemini API error (HTTP ${response.status}): ${text}`);
   }
 
   return await response.json();
@@ -140,6 +142,6 @@ async function postGitHubComment({ owner, repo, pullNumber, commitId, path, line
 
 module.exports = {
   fetchWithRetry,
-  callOpenAI,
+  callGemini,
   postGitHubComment,
 };

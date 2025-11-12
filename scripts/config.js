@@ -4,11 +4,13 @@
  */
 
 module.exports = {
-  // OpenAI Configuration
-  openai: {
-    apiKey: process.env.OPENAI_API_KEY,
-    apiUrl: process.env.OPENAI_API_URL || "https://api.openai.com/v1/responses",
-    model: process.env.MODEL || "gpt-5-nano",
+  // Google Gemini Configuration
+  gemini: {
+    apiKey: process.env.AI_API_KEY,
+    apiUrl:
+      process.env.GEMINI_API_URL ||
+      "https://generativelanguage.googleapis.com/v1beta/models",
+    model: process.env.MODEL || "gemini-2.5-flash",
     timeoutMs: 60000,
   },
 

@@ -1,11 +1,11 @@
 /**
- * Calls OpenAI API with the built request and processes the response
+ * Calls Google Gemini API with the built request and processes the response
  * Extracts structured JSON output and generates review comments
  */
 
 const config = require("./config");
 const { readJsonFile, writeJsonFile, writeFile } = require("./utils/fileUtils");
-const { callOpenAI } = require("./utils/apiClient");
+const { callGemini } = require("./utils/apiClient");
 const {
   withErrorHandling,
   validateRequiredEnvVars,
@@ -16,11 +16,11 @@ const {
 } = require("./formatters/commentFormatter");
 
 /**
- * Main function to call OpenAI API and process response
+ * Main function to call Google Gemini API and process response
  */
 async function main() {
   // Validate required environment variables
-  validateRequiredEnvVars(["OPENAI_API_KEY"]);
+  validateRequiredEnvVars(["GEMINI_API_KEY"]);
 
   // Read the request payload
   const requestPayload = readJsonFile(config.paths.requestJson);
@@ -28,33 +28,33 @@ async function main() {
     throw new Error(`Request file not found: ${config.paths.requestJson}`);
   }
 
-  // Ensure model is set (safety check)
-  requestPayload.model = requestPayload.model || config.openai.model;
+  // Get model from config for logging
+  const modelName = config.gemini.model;
 
-  console.log(`🚀 Calling OpenAI API (model: ${requestPayload.model})...`);
+  console.log(`🚀 Calling Google Gemini API (model: ${modelName})...`);
 
   // Log request payload for debugging (without full content to avoid clutter)
   console.log("\n" + "=".repeat(60));
   console.log("📤 REQUEST PAYLOAD SUMMARY");
   console.log("=".repeat(60));
-  console.log(`Model: ${requestPayload.model}`);
-  console.log(`Input messages: ${requestPayload.input?.length || 0}`);
-  if (requestPayload.input) {
-    requestPayload.input.forEach((msg, i) => {
-      console.log(`  [${i}]: ${JSON.stringify(msg, null, 2)}`);
-      // const preview = msg.content.substring(0, 100).replace(/\n/g, " ");
-      // console.log(`  [${i}] ${msg.role}: ${preview}${msg.content.length > 100 ? "..." : ""} (${msg.content.length} chars)`);
+  console.log(`Model: ${modelName}`);
+  console.log(`Contents: ${requestPayload.contents?.length || 0}`);
+  if (requestPayload.contents) {
+    requestPayload.contents.forEach((content, i) => {
+      const textPreview = content.parts?.[0]?.text?.substring(0, 100).replace(/\n/g, " ") || "";
+      const textLength = content.parts?.[0]?.text?.length || 0;
+      console.log(`  [${i}] ${content.role}: ${textPreview}${textLength > 100 ? "..." : ""} (${textLength} chars)`);
     });
   }
-  console.log(`Response format: ${requestPayload.text?.format?.type || "N/A"}`);
+  console.log(`Response MIME type: ${requestPayload.generationConfig?.response_mime_type || "N/A"}`);
   console.log("=".repeat(60) + "\n");
 
-  // Call OpenAI API with retry logic
-  const apiResponse = await callOpenAI(requestPayload);
+  // Call Gemini API with retry logic
+  const apiResponse = await callGemini(requestPayload);
 
   // Log API response structure for debugging
   console.log("\n" + "=".repeat(60));
-  console.log("📥 OPENAI API RESPONSE");
+  console.log("📥 GEMINI API RESPONSE");
   console.log("=".repeat(60));
   console.log(JSON.stringify(apiResponse, null, 2));
   console.log("=".repeat(60) + "\n");
@@ -105,13 +105,13 @@ async function main() {
   // Format and save markdown comment
   const markdownComment = formatMarkdownComment(
     parsedResult,
-    requestPayload.model,
+    modelName,
     rawDiffLength
   );
   writeFile(config.paths.commentMarkdown, markdownComment);
 
   console.log("\n" + "=".repeat(60));
-  console.log("✅ OPENAI CALL COMPLETED SUCCESSFULLY");
+  console.log("✅ GEMINI API CALL COMPLETED SUCCESSFULLY");
   console.log("=".repeat(60));
   console.log(`Response saved to: ${config.paths.responseJson}`);
   console.log(`Parsed result saved to: ${config.paths.aiResultJson}`);
@@ -139,4 +139,4 @@ async function main() {
 }
 
 // Execute with error handling
-withErrorHandling(main, "OpenAI API call")();
+withErrorHandling(main, "Gemini API call")();

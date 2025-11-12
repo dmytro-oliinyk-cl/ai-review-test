@@ -1,5 +1,5 @@
 /**
- * Builds the OpenAI API request payload
+ * Builds the Google Gemini API request payload
  * Reads AI instructions, review rules, and diff, then constructs a structured request
  */
 
@@ -8,36 +8,29 @@ const { readFileIfExists, writeJsonFile, validateFilesExist } = require("./utils
 const { withErrorHandling } = require("./utils/errorHandler");
 
 /**
- * Builds the response format schema for structured JSON output
- * @returns {object} The response format specification
+ * Builds the response schema for structured JSON output (Gemini format)
+ * @returns {object} The response schema specification
  */
-function buildResponseFormat() {
+function buildResponseSchema() {
   return {
-    type: "json_schema",
-    name: "AiCodeReviewIssues",
-    schema: {
-      type: "object",
-      properties: {
-        issues: {
-          type: "array",
-          items: {
-            type: "object",
-            required: ["id", "path", "line", "message", "suggestion"],
-            properties: {
-              id: { type: "string" },
-              path: { type: "string" },
-              line: { type: "integer" },
-              message: { type: "string" },
-              suggestion: { type: "string" },
-            },
-            additionalProperties: false,
+    type: "object",
+    properties: {
+      issues: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["id", "path", "line", "message", "suggestion"],
+          properties: {
+            id: { type: "string" },
+            path: { type: "string" },
+            line: { type: "integer" },
+            message: { type: "string" },
+            suggestion: { type: "string" },
           },
         },
       },
-      required: ["issues"],
-      additionalProperties: false,
     },
-    strict: true,
+    required: ["issues"],
   };
 }
 
@@ -61,16 +54,22 @@ async function main() {
     console.log("ℹ️  No diff content found, creating empty request");
   }
 
-  // Build the API payload
+  // Build the API payload for Gemini
   const payload = {
-    model: config.openai.model,
-    text: {
-      format: buildResponseFormat(),
-    },
-    input: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: `Rules:\n${reviewRules}\n\nDIFF:\n${diff}` },
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `${systemPrompt}\n\nRules:\n${reviewRules}\n\nDIFF:\n${diff}`,
+          },
+        ],
+      },
     ],
+    generationConfig: {
+      response_mime_type: "application/json",
+      response_schema: buildResponseSchema(),
+    },
   };
 
   // Write to file

@@ -4,22 +4,36 @@
  */
 
 /**
- * Extracts text from OpenAI API response
+ * Extracts text from AI API response
  * Handles multiple response formats:
- * 1. Direct output_text field (Responses API)
- * 2. Nested output array with message content (Responses API)
- * 3. Chat Completions format (fallback)
+ * 1. Google Gemini format (candidates array)
+ * 2. Direct output_text field (OpenAI Responses API)
+ * 3. Nested output array with message content (OpenAI Responses API)
+ * 4. Chat Completions format (OpenAI fallback)
  *
  * @param {object} data - The API response data
  * @returns {string} Extracted text or empty string
  */
 function extractResponseText(data) {
-  // Format 1: Direct output_text field
+  // Format 1: Google Gemini API format
+  if (Array.isArray(data?.candidates) && data.candidates.length > 0) {
+    const candidate = data.candidates[0];
+    if (candidate?.content?.parts && Array.isArray(candidate.content.parts)) {
+      const textParts = candidate.content.parts
+        .filter(part => typeof part?.text === "string")
+        .map(part => part.text);
+      if (textParts.length > 0) {
+        return textParts.join("\n");
+      }
+    }
+  }
+
+  // Format 2: Direct output_text field (OpenAI Responses API)
   if (typeof data?.output_text === "string" && data.output_text.trim()) {
     return data.output_text;
   }
 
-  // Format 2: Responses API with output array
+  // Format 3: Responses API with output array (OpenAI)
   if (Array.isArray(data?.output)) {
     const chunks = [];
     for (const part of data.output) {
@@ -36,7 +50,7 @@ function extractResponseText(data) {
     }
   }
 
-  // Format 3: Chat Completions API fallback
+  // Format 4: Chat Completions API fallback (OpenAI)
   const choice = data?.choices?.[0];
   if (choice?.message?.content && typeof choice.message.content === "string") {
     return choice.message.content;
