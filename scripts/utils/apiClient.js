@@ -70,7 +70,7 @@ async function fetchWithRetry(url, options = {}, maxAttempts = config.retry.maxA
  */
 async function callGemini(payload) {
   if (!config.gemini.apiKey) {
-    throw new Error("GEMINI_API_KEY is not set");
+    throw new Error("AI_API_KEY is not set");
   }
 
   // Construct the full URL with model and API key

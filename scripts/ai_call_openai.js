@@ -20,7 +20,7 @@ const {
  */
 async function main() {
   // Validate required environment variables
-  validateRequiredEnvVars(["GEMINI_API_KEY"]);
+  validateRequiredEnvVars(["AI_API_KEY"]);
 
   // Read the request payload
   const requestPayload = readJsonFile(config.paths.requestJson);

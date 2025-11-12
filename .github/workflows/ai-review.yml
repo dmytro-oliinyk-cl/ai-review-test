@@ -107,7 +107,7 @@ jobs:
       - name: Call Google Gemini API for code review
         if: steps.diff.outputs.empty != 'true'
         env:
-          GEMINI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
           GEMINI_API_URL: ${{ env.GEMINI_API_URL }}
           MODEL: ${{ env.MODEL }}
           RAW_DIFF_LEN: ${{ steps.diff.outputs.raw_len }}
