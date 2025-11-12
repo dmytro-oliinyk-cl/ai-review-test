@@ -14,6 +14,10 @@ Your job is to detect **new violations** introduced in the changed code and retu
 🧾 Output Requirements:
 
 - Output must be a **single valid JSON object**, nothing else (no prose, no explanations).
+- Report EVERY occurrence as a separate item.
+- Do NOT deduplicate similar findings; emit one item per (path, line).
+- If multiple lines share the same rule, output multiple items (one per line).
+- Never summarize instead of enumerating.
 - Each issue must include:
   - `id` — the CQ rule ID (e.g., "CQ-4.08").
   - `path` — relative file path where the violation occurs.

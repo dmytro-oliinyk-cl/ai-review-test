@@ -35,113 +35,30 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Compute diff between base and HEAD
-        id: diff
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Get base and head SHAs for the pull request
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.sha }}"
-
-          echo "Computing diff: ${BASE_SHA}...${HEAD_SHA}"
-
-          # Generate diff with unified=0 for precise line numbers
-          git diff --unified=${{ env.DIFF_UNIFIED_LINES }} "$BASE_SHA...$HEAD_SHA" > diff.patch || true
-
-          # Read and measure diff content
-          DIFF_CONTENT="$(cat diff.patch || true)"
-          RAW_LEN=${#DIFF_CONTENT}
-
-          # Trim diff to maximum allowed size
-          LIMIT="${{ env.DIFF_MAX_CHARS }}"
-          printf "%s" "${DIFF_CONTENT:0:${LIMIT}}" > diff.trimmed
-          TRIM_LEN=$(wc -c < diff.trimmed | tr -d '[:space:]')
-
-          echo "Diff size: ${RAW_LEN} chars (trimmed to ${TRIM_LEN})"
-
-          # Export outputs for subsequent steps
-          {
-            echo "raw_len=${RAW_LEN}"
-            echo "trim_len=${TRIM_LEN}"
-            if [[ "${TRIM_LEN}" -eq 0 ]]; then
-              echo "empty=true"
-            else
-              echo "empty=false"
-            fi
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Verify AI instruction files
-        id: verify_ai
-        shell: bash
-        run: |
-          set -euo pipefail
-          PROMPT_PATH=".ai/ai-reviewer-instruction.md"
-          RULES_PATH=".ai/review-rules.md"
-
-          # Check if required files exist
-          [[ -f "$PROMPT_PATH" ]] || { echo "❌ Missing $PROMPT_PATH"; exit 1; }
-          [[ -f "$RULES_PATH"  ]] || { echo "❌ Missing $RULES_PATH"; exit 1; }
-
-          # Get file sizes for diagnostics
-          SYS_BYTES=$(wc -c < "$PROMPT_PATH" | tr -d '[:space:]' || echo 0)
-          RULES_BYTES=$(wc -c < "$RULES_PATH"  | tr -d '[:space:]' || echo 0)
-
-          echo "✅ AI instruction files found:"
-          echo "  - $PROMPT_PATH (${SYS_BYTES} bytes)"
-          echo "  - $RULES_PATH (${RULES_BYTES} bytes)"
-
-          # Export for potential use in later steps
-          {
-            echo "sys_bytes=${SYS_BYTES}"
-            echo "rules_bytes=${RULES_BYTES}"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build Gemini request payload
-        run: node scripts/ai_build_request.js
-        env:
-          MODEL: ${{ env.MODEL }}
-          DIFF_MAX_CHARS: ${{ env.DIFF_MAX_CHARS }}
-
-      - name: Call Google Gemini API for code review
-        if: steps.diff.outputs.empty != 'true'
+      - name: Run AI Code Review
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           GEMINI_API_URL: ${{ env.GEMINI_API_URL }}
           MODEL: ${{ env.MODEL }}
-          RAW_DIFF_LEN: ${{ steps.diff.outputs.raw_len }}
-        run: node scripts/ai_call_openai.js
+          DIFF_MAX_CHARS: ${{ env.DIFF_MAX_CHARS }}
+          DIFF_UNIFIED_LINES: ${{ env.DIFF_UNIFIED_LINES }}
+          MAX_INLINE: ${{ env.MAX_INLINE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: node scripts/run_review.js
 
       - name: Post summary comment to PR
-        if: steps.diff.outputs.empty != 'true'
+        if: success() && hashFiles('comment.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: ai-code-review
           path: comment.md
 
-      - name: Post inline review comments
-        if: steps.diff.outputs.empty != 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
-          MAX_INLINE: ${{ env.MAX_INLINE }}
-        run: node scripts/ai_post_inline.js
-
-      - name: Review summary
-        if: always()
-        run: |
-          echo "📊 AI Code Review Summary"
-          echo "========================="
-          if [[ "${{ steps.diff.outputs.empty }}" == "true" ]]; then
-            echo "ℹ️  No changes to review (empty diff)"
-          else
-            echo "✅ Review completed"
-            echo "Diff size: ${{ steps.diff.outputs.raw_len }} chars"
-            echo "Model: ${{ env.MODEL }}"
-          fi
-
       - name: Upload debug artifacts
-        if: always() && steps.diff.outputs.empty != 'true'
+        if: always() && hashFiles('request.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: ai-review-debug
@@ -151,6 +68,5 @@ jobs:
             ai_result.json
             ai_raw_text.txt
             comment.md
-            diff.patch
             diff.trimmed
           retention-days: 7
