@@ -120,7 +120,7 @@ function App() {
                       : todo.priority === "medium"
                       ? "🟠 MED"
                       : todo.priority === "low"
-                      ? "🟢 LOW"
+                      ? "🟢 LOWц"
                       : "???"}
                   </span>
                 </div>
