@@ -9,7 +9,7 @@ on:
 
 env:
   # OpenAI Configuration
-  MODEL: gpt-5-nano
+  MODEL: gpt-5-mini
   OPENAI_API_URL: https://api.openai.com/v1/responses
 
   # Diff Configuration
@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history needed for diff computation
+          fetch-depth: 0 # Full history needed for diff computation
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
