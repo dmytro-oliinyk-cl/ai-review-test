@@ -42,9 +42,9 @@ module.exports = {
 
   // Retry Configuration
   retry: {
-    maxAttempts: 3,
-    initialDelayMs: 1000,
-    maxDelayMs: 10000,
+    maxAttempts: 5,
+    initialDelayMs: 2000,
+    maxDelayMs: 30000,
     backoffMultiplier: 2,
   },
 };

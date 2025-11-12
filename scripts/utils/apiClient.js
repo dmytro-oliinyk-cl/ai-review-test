@@ -26,9 +26,10 @@ async function fetchWithRetry(url, options = {}, maxAttempts = config.retry.maxA
   let lastError;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let timeout;
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(
+      timeout = setTimeout(
         () => controller.abort(),
         options.timeout || config.gemini.timeoutMs
       );
@@ -39,10 +40,18 @@ async function fetchWithRetry(url, options = {}, maxAttempts = config.retry.maxA
       });
 
       clearTimeout(timeout);
+
+      // Check for retryable HTTP errors (503 Service Unavailable, 429 Rate Limited, 500 Server Error)
+      if (!response.ok && (response.status === 503 || response.status === 429 || response.status === 500)) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      // Return response for success or non-retryable errors
       return response;
     } catch (error) {
       lastError = error;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
 
       if (attempt < maxAttempts) {
         const delay = Math.min(
