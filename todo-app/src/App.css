@@ -22,6 +22,43 @@
   text-align: center;
 }
 
+.filter-section {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+
+.filter-btn {
+  padding: 8px 20px;
+  font-size: 14px;
+  background: #e0e0e0;
+  color: #333;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.filter-btn:hover {
+  background: #d0d0d0;
+}
+
+.filter-btn.active {
+  background: #646cff;
+  color: white;
+}
+
+.priority-select {
+  padding: 12px;
+  font-size: 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  outline: none;
+  background: white;
+  cursor: pointer;
+}
+
 .input-section {
   display: flex;
   gap: 10px;
@@ -108,6 +145,15 @@
 .todo-text {
   font-size: 16px;
   color: #333;
+  flex: 1;
+}
+
+.priority-badge {
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #f0f0f0;
 }
 
 .todo-item.completed .todo-text {
