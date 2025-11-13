@@ -2,8 +2,10 @@
  * TodoItem component
  * Following CQ-4.01: Single responsibility per component
  * Following CQ-4.08: No business logic in JSX
+ * Following CQ-4.07: Memoization for performance (component rendered in list)
  */
 
+import { memo } from "react";
 import { getPriorityBorderStyle, getPriorityBadgeText } from "../utils/priorityHelpers";
 
 function TodoItem({ todo, onToggle, onDelete }) {
@@ -48,4 +50,4 @@ function TodoItem({ todo, onToggle, onDelete }) {
   );
 }
 
-export default TodoItem;
+export default memo(TodoItem);

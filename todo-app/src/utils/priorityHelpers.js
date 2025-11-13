@@ -23,6 +23,7 @@ export function getPriorityBorderStyle(priority) {
 
 /**
  * Get priority badge text with emoji
+ * Following CQ-3.08: Avoid abbreviations
  * @param {string} priority - Priority level
  * @returns {string} Formatted priority text
  */
@@ -31,7 +32,7 @@ export function getPriorityBadgeText(priority) {
     case PRIORITY_HIGH:
       return "🔴 HIGH";
     case PRIORITY_MEDIUM:
-      return "🟠 MED";
+      return "🟠 MEDIUM";
     case PRIORITY_LOW:
       return "🟢 LOW";
     default:
