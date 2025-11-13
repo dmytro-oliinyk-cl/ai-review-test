@@ -4,12 +4,19 @@
  * Following CQ-4.10: Event handlers start with handle*
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PRIORITY_LOW, PRIORITY_OPTIONS } from "../constants/priorities";
 
 function TodoInput({ onAdd }) {
   const [inputValue, setInputValue] = useState("");
   const [priority, setPriority] = useState(PRIORITY_LOW);
+
+  // Violates CQ-4.03: Missing dependency 'inputValue' in useEffect
+  useEffect(() => {
+    if (inputValue.length > 50) {
+      console.log("Input is getting long!");
+    }
+  }, []); // Missing inputValue dependency
 
   const handleInputChange = (event) => {
     setInputValue(event.target.value);
