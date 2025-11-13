@@ -1,5 +1,5 @@
 # .github/workflows/ai-review.yml
-name: 🔍 CodeGuardian AI
+name: CodeGuardian AI
 
 on:
   pull_request:
@@ -21,21 +21,21 @@ env:
 
 jobs:
   ai-review:
-    name: 🔍 CodeGuardian Analysis
+    name: CodeGuardian Analysis
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Full history needed for diff computation
 
-      - name: ⚙️ Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: 🤖 Run CodeGuardian AI Review
+      - name: Run CodeGuardian AI Review
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           GEMINI_API_URL: ${{ env.GEMINI_API_URL }}
@@ -50,14 +50,14 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: node scripts/run_review.js
 
-      - name: 💬 Post summary to PR
+      - name: Post summary to PR
         if: success() && hashFiles('comment.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: codeguardian-ai-review
           path: comment.md
 
-      - name: 📦 Upload debug artifacts
+      - name: Upload debug artifacts
         if: always() && hashFiles('request.json') != ''
         uses: actions/upload-artifact@v4
         with:
