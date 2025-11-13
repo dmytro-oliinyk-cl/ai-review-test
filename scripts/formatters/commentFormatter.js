@@ -3,6 +3,8 @@
  * @module formatters/commentFormatter
  */
 
+const { getRuleLink } = require("../utils/docLinks");
+
 /**
  * Extracts text from AI API response
  * Handles multiple response formats:
@@ -70,10 +72,24 @@ function extractResponseText(data) {
  * @returns {string} Formatted comment body
  */
 function formatIssueComment(issue) {
-  const header = `**${issue.id}** at \`${issue.path}:${issue.line}\``;
-  const message = issue.message ? `\n\n${issue.message}` : "";
-  const suggestion = issue.suggestion ? `\n\n**Suggestion:** ${issue.suggestion}` : "";
-  return header + message + suggestion;
+  const ruleLink = getRuleLink(issue.id);
+
+  const lines = [
+    `**${ruleLink}**`,
+    "",
+    issue.message || "",
+  ];
+
+  if (issue.suggestion) {
+    lines.push("");
+    lines.push(`**Suggestion:** ${issue.suggestion}`);
+  }
+
+  lines.push("");
+  lines.push("---");
+  lines.push(`<sub>CodeGuardian AI • [View all rules →](https://clca-dev.atlassian.net/wiki/spaces/NL/pages/312246283/Frontend+Code+Quality+Architecture+Standards)</sub>`);
+
+  return lines.join("\n");
 }
 
 /**
@@ -84,25 +100,49 @@ function formatIssueComment(issue) {
  * @returns {string} Formatted markdown comment
  */
 function formatMarkdownComment(result, model, rawDiffLength) {
+  const issueCount = result?.issues?.length || 0;
+
   const lines = [
-    "### 🤖 AI Code Review",
-    `_Model: \`${model}\` • raw diff: ${rawDiffLength} chars_`,
+    "## CodeGuardian AI Review",
+    "",
+    `<sub>Powered by ${model} • Analyzed ${rawDiffLength} characters</sub>`,
     "",
   ];
 
   if (result?.issues && Array.isArray(result.issues) && result.issues.length > 0) {
-    lines.push(`Found **${result.issues.length}** issue(s):`);
-    lines.push("");
-    result.issues.forEach((issue, index) => {
-      lines.push(`${index + 1}. **${issue.id}** - \`${issue.path}:${issue.line}\``);
-      if (issue.message) {
-        lines.push(`   ${issue.message}`);
+    // Group issues by rule category
+    const issuesByCategory = {};
+    result.issues.forEach(issue => {
+      const category = issue.id.split('.')[0]; // e.g., "CQ-1", "CQ-4"
+      if (!issuesByCategory[category]) {
+        issuesByCategory[category] = [];
       }
+      issuesByCategory[category].push(issue);
     });
+
+    // Statistics
+    lines.push(`### Found ${issueCount} issue${issueCount > 1 ? 's' : ''}`);
+    lines.push("");
+    lines.push("| Category | Count | Rules |");
+    lines.push("|----------|-------|-------|");
+
+    Object.keys(issuesByCategory).sort().forEach(category => {
+      const issues = issuesByCategory[category];
+      const ruleIds = [...new Set(issues.map(i => i.id))].map(id => getRuleLink(id)).join(', ');
+      lines.push(`| ${category} | ${issues.length} | ${ruleIds} |`);
+    });
+
+    lines.push("");
+    lines.push(`**💡 Tip:** Check inline comments on specific lines for details and suggestions.`);
+    lines.push("");
   } else {
-    lines.push("✅ No issues found!");
+    lines.push("### ✓ No issues found");
+    lines.push("");
+    lines.push("All code quality checks passed.");
+    lines.push("");
   }
 
+  lines.push("---");
   lines.push("");
   lines.push("<details>");
   lines.push("<summary>View full JSON response</summary>");
@@ -110,7 +150,10 @@ function formatMarkdownComment(result, model, rawDiffLength) {
   lines.push("```json");
   lines.push(JSON.stringify(result, null, 2));
   lines.push("```");
+  lines.push("");
   lines.push("</details>");
+  lines.push("");
+  lines.push(`<sub>**CodeGuardian AI** • [View documentation →](https://clca-dev.atlassian.net/wiki/spaces/NL/pages/312246283/Frontend+Code+Quality+Architecture+Standards)</sub>`);
 
   return lines.join("\n");
 }

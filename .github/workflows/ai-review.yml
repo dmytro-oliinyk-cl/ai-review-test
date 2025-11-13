@@ -1,5 +1,5 @@
 # .github/workflows/ai-review.yml
-name: AI Code Review
+name: CodeGuardian AI
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ env:
 
 jobs:
   ai-review:
-    name: AI Code Review
+    name: CodeGuardian Analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Run AI Code Review
+      - name: Run CodeGuardian AI Review
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           GEMINI_API_URL: ${{ env.GEMINI_API_URL }}
@@ -50,11 +50,11 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: node scripts/run_review.js
 
-      - name: Post summary comment to PR
+      - name: Post summary to PR
         if: success() && hashFiles('comment.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: ai-code-review
+          header: codeguardian-ai-review
           path: comment.md
 
       - name: Upload debug artifacts
