@@ -110,26 +110,31 @@ function formatMarkdownComment(result, model, rawDiffLength) {
   ];
 
   if (result?.issues && Array.isArray(result.issues) && result.issues.length > 0) {
-    lines.push(`### Found ${result.issues.length} issue${result.issues.length > 1 ? 's' : ''}`);
-    lines.push("");
-
-    result.issues.forEach((issue, index) => {
-      const ruleLink = getRuleLink(issue.id);
-      lines.push(`#### ${index + 1}. ${ruleLink}`);
-      lines.push("");
-      lines.push(`\`${issue.path}:${issue.line}\``);
-      lines.push("");
-
-      if (issue.message) {
-        lines.push(issue.message);
-        lines.push("");
+    // Group issues by rule category
+    const issuesByCategory = {};
+    result.issues.forEach(issue => {
+      const category = issue.id.split('.')[0]; // e.g., "CQ-1", "CQ-4"
+      if (!issuesByCategory[category]) {
+        issuesByCategory[category] = [];
       }
-
-      if (issue.suggestion) {
-        lines.push(`**Suggestion:** ${issue.suggestion}`);
-        lines.push("");
-      }
+      issuesByCategory[category].push(issue);
     });
+
+    // Statistics
+    lines.push(`### Found ${issueCount} issue${issueCount > 1 ? 's' : ''}`);
+    lines.push("");
+    lines.push("| Category | Count | Rules |");
+    lines.push("|----------|-------|-------|");
+
+    Object.keys(issuesByCategory).sort().forEach(category => {
+      const issues = issuesByCategory[category];
+      const ruleIds = [...new Set(issues.map(i => i.id))].map(id => getRuleLink(id)).join(', ');
+      lines.push(`| ${category} | ${issues.length} | ${ruleIds} |`);
+    });
+
+    lines.push("");
+    lines.push(`**💡 Tip:** Check inline comments on specific lines for details and suggestions.`);
+    lines.push("");
   } else {
     lines.push("### ✓ No issues found");
     lines.push("");
@@ -140,7 +145,7 @@ function formatMarkdownComment(result, model, rawDiffLength) {
   lines.push("---");
   lines.push("");
   lines.push("<details>");
-  lines.push("<summary>View detailed analysis</summary>");
+  lines.push("<summary>View full JSON response</summary>");
   lines.push("");
   lines.push("```json");
   lines.push(JSON.stringify(result, null, 2));
