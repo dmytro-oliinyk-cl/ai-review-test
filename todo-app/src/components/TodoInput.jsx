@@ -8,12 +8,12 @@ import { useState, useEffect } from "react";
 import { PRIORITY_LOW, PRIORITY_OPTIONS } from "../constants/priorities";
 
 function TodoInput({ onAdd }) {
-  const [inputValue, setInputValue] = useState("");
+  const [INPUT_VALUE, setInputValue] = useState("");
   const [priority, setPriority] = useState(PRIORITY_LOW);
 
   // Violates CQ-4.03: Missing dependency 'inputValue' in useEffect
   useEffect(() => {
-    if (inputValue.length > 50) {
+    if (INPUT_VALUE.length > 50) {
       console.log("Input is getting long!");
     }
   }, []); // Missing inputValue dependency
@@ -27,8 +27,8 @@ function TodoInput({ onAdd }) {
   };
 
   const handleAdd = () => {
-    if (inputValue.trim() !== "") {
-      onAdd(inputValue, priority);
+    if (INPUT_VALUE.trim() !== "") {
+      onAdd(INPUT_VALUE, priority);
       setInputValue("");
       setPriority(PRIORITY_LOW);
     }
@@ -55,7 +55,7 @@ function TodoInput({ onAdd }) {
       </select>
       <input
         type="text"
-        value={inputValue}
+        value={INPUT_VALUE}
         onChange={handleInputChange}
         onKeyPress={handleKeyPress}
         placeholder="Add a new todo..."
