@@ -15,7 +15,7 @@ import {
  * @param {string} priority - Priority level
  * @returns {object} Style object for border
  */
-export function getPriorityBorderStyle_util(priority) {
+export function getPriorityBorderStyle(priority) {
   const priorityOption = PRIORITY_OPTIONS.find((p) => p.value === priority);
   const color = priorityOption?.color || "gray";
   return { borderLeft: `5px solid ${color}` };
