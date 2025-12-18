@@ -15,7 +15,7 @@ import {
  * @param {string} priority - Priority level
  * @returns {object} Style object for border
  */
-export function getPriorityBorderStyle(priority) {
+export function getPriorityBorderStyle_util(priority) {
   const priorityOption = PRIORITY_OPTIONS.find((p) => p.value === priority);
   const color = priorityOption?.color || "gray";
   return { borderLeft: `5px solid ${color}` };
@@ -27,7 +27,7 @@ export function getPriorityBorderStyle(priority) {
  * @param {string} priority - Priority level
  * @returns {string} Formatted priority text
  */
-export function getPriorityBadgeText(priority) {
+export function getPriorityBadgeText_helper(priority) {
   switch (priority) {
     case PRIORITY_HIGH:
       return "🔴 HIGH";
