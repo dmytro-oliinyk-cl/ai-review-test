@@ -12,7 +12,7 @@ const config = require("./config");
 const { readJsonFile, writeJsonFile, writeFile, readFileIfExists, validateFilesExist } = require("./utils/fileUtils");
 const { callGemini, postGitHubComment } = require("./utils/apiClient");
 const { withErrorHandling, validateRequiredEnvVars } = require("./utils/errorHandler");
-const { extractResponseText, formatMarkdownComment, isValidIssue } = require("./formatters/commentFormatter");
+const { extractResponseText, formatMarkdownComment, formatIssueComment, isValidIssue } = require("./formatters/commentFormatter");
 
 /**
  * Executes a shell command and returns the output
@@ -272,11 +272,7 @@ async function postInlineComments(parsedResult) {
 
   for (const issue of issuesToPost) {
     try {
-      const body = [
-        `**${issue.id}** at \`${issue.path}:${issue.line}\``,
-        issue.message ? `\n\n${issue.message}` : "",
-        issue.suggestion ? `\n\n**Suggestion:** ${issue.suggestion}` : "",
-      ].join("");
+      const body = formatIssueComment(issue);
 
       await postGitHubComment({
         owner,
